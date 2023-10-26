@@ -1,5 +1,3 @@
-From sflib Require Import sflib.
-
 Require Import ZArith.
 Require Import String.
 Require Import Floats.
@@ -196,8 +194,9 @@ End Inst.
 Section Stmt.
   Inductive stmt :=
   | inst (i: Inst.t)
-  | ite (cond: Val.t) (b1 b2: block)
-  | while (cond: Val.t) (b: block)
+  | ite (cond: Inst.expr) (b1 b2: block)
+  | forloop (init: Inst.t) (cond: Inst.expr) (update: Inst.t) (b: block)
+  | while (cond: Inst.expr) (b: block)
   | func (name: string) (params: list string) (b: block)
   with block :=
   | nil
@@ -205,16 +204,18 @@ Section Stmt.
   .
 
   (* TODO: polymorphism? *)
-  Record function: Type := mk_function {
-                               fn_params: list string;
-                               fn_body: block;
-                             }.
+  Record function: Type :=
+    mk_function {
+        fn_params: list string;
+        fn_body: block;
+      }.
 
-  Record class: Type := mk_class {
-                            fields: list string;
-                            sup: string; (* Inheritance *)
-                            cl_funcs: string -> option function;
-                          }.
+  Record class: Type :=
+    mk_class {
+        fields: list string;
+        sup: string; (* Inheritance *)
+        cl_funcs: string -> option function;
+      }.
 
 End Stmt.
 
@@ -228,8 +229,10 @@ Section Env.
 End Env.
 
 Section Program.
-  Record program: Type := mk_program {
-                              classes: string -> option class;
-                              funcs: string -> option function;
-                            }.
+  Record program: Type :=
+    mk_program {
+        classes: string -> option class;
+        funcs: string -> option function;
+      }.
+
 End Program.
