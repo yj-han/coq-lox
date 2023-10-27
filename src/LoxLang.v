@@ -8,11 +8,11 @@ Definition BASE := 10.
 
 Module Val.
   (** Data types *)
-  Inductive t :=
+  Variant t :=
     | boolean (b: bool)
     | int (z: Z)
     | float (f: float)
-    | literal (s: string)
+    | str (s: string)
     | func (name: string)
     | nil
   .
@@ -102,8 +102,8 @@ Module Val.
     | float a, float b => boolean (eqb a b)
     | int a, float b => boolean (eqb (z_to_primf a) b)
     | float a, int b => boolean (eqb a (z_to_primf b))
-    | literal a, literal b => boolean (a =? b)
-    | func a, func b => boolean (a =? b)
+    | str a, str b => boolean (String.eqb a b)
+    | func a, func b => boolean (String.eqb a b)
     | nil, nil => boolean true
     | _, nil => boolean false
     | nil, _ => boolean false
@@ -191,7 +191,7 @@ Module Inst.
 End Inst.
 
 
-Section Stmt.
+Section STMT.
   Inductive stmt :=
   | inst (i: Inst.t)
   | ite (cond: Inst.expr) (b1 b2: block)
@@ -217,22 +217,22 @@ Section Stmt.
         cl_funcs: string -> option function;
       }.
 
-End Stmt.
+End STMT.
 
-Section Env.
+Section ENV.
   Definition lenv := string -> Val.t.
   Definition init_le: lenv := fun _ => Val.nil.
 
   Definition update (k: string) (v: Val.t) (le: lenv): lenv :=
-    fun i => if (k =? i) then v else (le i).
+    fun i => if (String.eqb k i) then v else (le i).
 
-End Env.
+End ENV.
 
-Section Program.
+Section PROGRAM.
   Record program: Type :=
     mk_program {
         classes: string -> option class;
         funcs: string -> option function;
       }.
 
-End Program.
+End PROGRAM.
