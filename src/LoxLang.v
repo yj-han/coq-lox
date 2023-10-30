@@ -10,15 +10,18 @@ Module Val.
   (** Data types *)
   Variant t :=
     | boolean (b: bool)
-    | int (z: Z)
+    | int (n: Z)
     | float (f: float)
     | str (s: string)
     | func (name: string)
     | nil
   .
 
-  (* TODO: update Z -> float conversion technique *)
-  Definition z_to_primf (z: Z) := PrimFloat.of_uint63 (Uint63.of_Z z).
+  Definition z_to_primf (z: Z) :=
+    match z with
+    | Zneg p => opp (PrimFloat.of_uint63 (Uint63.of_Z (Zpos p)))
+    | _ => PrimFloat.of_uint63 (Uint63.of_Z z)                   
+    end.
 
   (** Arithmetic *)
   Definition add (lhs rhs: t): t :=
