@@ -93,3 +93,8 @@ flycheck_*.el
 
 # network security
 /network-security.data
+
+# Build output
+Makefile.coq
+Makefile.coq.conf
+_CoqProject
