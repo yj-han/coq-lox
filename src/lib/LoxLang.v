@@ -178,28 +178,25 @@ Module UnaryOp.
 
 End UnaryOp.
 
-Module Inst.
+Section STMT.
   Inductive expr :=
   | val (v: Val.t)
   | bin_op (op: BinOp.t) (lhs: expr) (rhs: expr)
   | unary_op (op: UnaryOp.t) (v: Val.t)
   .
-
-  Variant t :=
-    | skip
-    | assign (lhs: string) (rhs: Val.t)
-    | print (expr: Val.t)
-    | ret (expr: Val.t)
+  
+  Inductive inst_type :=
+  | skip
+  | assign (lhs: string) (rhs: expr)
+  | print (expr: expr)
+  | ret (expr: expr)
   .
-End Inst.
-
-
-Section STMT.
+  
   Inductive stmt :=
-  | inst (i: Inst.t)
-  | ite (cond: Inst.expr) (b1 b2: block)
-  | forloop (init: Inst.t) (cond: Inst.expr) (update: Inst.t) (b: block)
-  | while (cond: Inst.expr) (b: block)
+  | inst (i: inst_type)
+  | ite (cond: expr) (b1 b2: block)
+  | forloop (init: inst_type) (cond: expr) (update: inst_type) (b: block)
+  | while (cond: inst_type) (b: block)
   | func (name: string) (params: list string) (b: block)
   with block :=
   | nil
