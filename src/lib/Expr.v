@@ -27,7 +27,7 @@ Inductive stmt :=
 | block_stmt (stmts : list stmt)
 | expression (expr : expr)
 | function (name : token) (params : list token) (body : list stmt)
-| class (name : token) (superclass : expr) (methods : stmt)
+| class (name : token) (superclass : option expr) (methods : stmt)
 | ite (cond : expr) (bthen : stmt) (belse : stmt)
 | print (expr : expr)
 | ret (keyword : token) (val : expr)

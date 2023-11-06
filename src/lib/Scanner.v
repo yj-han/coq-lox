@@ -182,7 +182,7 @@ Section ERROR_HANDLING.
           ++ NilEmpty.string_of_int (Nat.to_int line)
     | unterminated_string_literal =>
         "Unterminated string literal "
-          ++ "' at line "
+          ++ " at line "
           ++ NilEmpty.string_of_int (Nat.to_int line)
     end.
 
@@ -199,40 +199,41 @@ Section DFA.
 
   Record DFA :=
     mk_DFA {
-        mode: state;
+        cur_state: state;
         loc: nat
       }.
 
   (* State transitions *)
-  Definition init_dfa (mode: state) (loc: nat) := {| mode := mode; loc := loc |}.
-  Definition initial_dfa (loc : nat) := init_dfa normal loc.
-  Definition start_quoting (loc: nat) := init_dfa (quoting nil) loc.
+  Definition make_dfa (cur_state: state) (loc: nat) :=
+    {| cur_state := cur_state; loc := loc |}.
+  Definition initial_dfa (loc : nat) := make_dfa normal loc.
+  Definition start_quoting (loc: nat) := make_dfa (quoting nil) loc.
   Definition next_quoting
     (acc: list Character.t)
     (ch: Character.t)
     (loc: nat)
-    := init_dfa (quoting (acc ++ ch :: nil)) loc.
+    := make_dfa (quoting (acc ++ ch :: nil)) loc.
   Definition start_wording
     (ch: Character.t)
     (loc: nat)
-    := init_dfa (wording (ch :: nil)) loc.
+    := make_dfa (wording (ch :: nil)) loc.
   Definition next_wording
     (acc: list Character.t)
     (ch: Character.t)
     (loc: nat)
-    := init_dfa (wording (acc ++ ch :: nil)) loc.
+    := make_dfa (wording (acc ++ ch :: nil)) loc.
   Definition start_numbering
     (n: ascii)
     (loc: nat)
-    := init_dfa (numbering (n :: nil) nil false) loc.
+    := make_dfa (numbering (n :: nil) nil false) loc.
   Definition next_numbering
     (whole fraction: list ascii)
     (is_float: bool)
     (n: ascii)
     (loc: nat)
     :=
-    if is_float then init_dfa (numbering whole (fraction ++ n :: nil) is_float) loc
-    else init_dfa (numbering (whole ++ n :: nil) fraction is_float) loc.
+    if is_float then make_dfa (numbering whole (fraction ++ n :: nil) is_float) loc
+    else make_dfa (numbering (whole ++ n :: nil) fraction is_float) loc.
 
 End DFA.
 
@@ -252,7 +253,7 @@ Section TOKENIZER.
 
   Definition tk_number_of_list_ascii
     (whole fraction: list ascii)
-    : token_type :=
+    : token :=
     let whole_num := z_of_list_ascii whole in
     if Nat.eqb (length fraction) 0 then
       tk_int whole_num
@@ -264,7 +265,7 @@ Section TOKENIZER.
 
   (* Get the token type of input word. The return type should be either
      related to reserved_keyword or identifier *)
-  Definition token_type_of_word (word : string) : token_type :=
+  Definition token_of_word (word : string) : token :=
     if String.eqb word AND then tk_and
     else if String.eqb word OR then tk_or
     else if String.eqb word FUN then tk_fun
@@ -283,107 +284,90 @@ Section TOKENIZER.
     else if String.eqb word VAR then tk_var
     else tk_identifier word.
 
-  Definition concat_with_casting (tk : token) (tks : result (list token)) :=
+  Definition concat_with_casting (X : Type) (tk : X) (tks : result (list X)) :=
     match tks with
     | Ok tks => Ok (tk :: tks)
     | _ => tks
     end.
 
+  Arguments concat_with_casting {X}.
+  
   (* Tokenize input source code. DFA helps the recursive function to use
    src as a decreasing variable to the base case *)
   Fixpoint tokenize_rec
     (src: list Character.t)
     (dfa: DFA)
     : result (list token) :=
-    match dfa.(mode) with
+    match dfa.(cur_state) with
     | normal =>
         match src with
         | nil => Ok nil
         | Character.left_paren :: tl =>
-            let token := make_token tk_left_paren dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_left_paren result
         | Character.right_paren :: tl =>
-            let token := make_token tk_right_paren dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_right_paren result
         | Character.left_brace :: tl =>
-            let token := make_token tk_left_brace dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_left_brace result
         | Character.right_brace :: tl =>
-            let token := make_token tk_right_brace dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_right_brace result
         | Character.comma :: tl =>
-            let token := make_token tk_comma dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_comma result
         | Character.dot :: tl =>
-            let token := make_token tk_dot dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_dot result
         | Character.minus :: tl =>
-            let token := make_token tk_minus dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_minus result
         | Character.plus :: tl =>
-            let token := make_token tk_plus dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_plus result
         | Character.semi_colon :: tl =>
-            let token := make_token tk_semi_colon dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_semi_colon result
         | Character.star :: tl =>
-            let token := make_token tk_star dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_star result
         | Character.space :: tl
         | Character.tab :: tl => tokenize_rec tl dfa
         | Character.line_feed :: tl
         | Character.carriage_ret :: tl =>
-            let next_dfa := init_dfa normal (dfa.(loc) + 1) in
+            let next_dfa := make_dfa normal (dfa.(loc) + 1) in
             tokenize_rec tl next_dfa
         | Character.bang :: Character.eq :: tl =>
-            let token := make_token tk_bang_eq dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_bang_eq result
         | Character.bang :: tl =>
-            let token := make_token tk_bang dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_bang result
         | Character.eq :: Character.eq :: tl =>
-            let token := make_token tk_eq_eq dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_eq_eq result
         | Character.eq :: tl =>
-            let token := make_token tk_eq dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_eq result
         | Character.lt :: Character.eq :: tl =>
-            let token := make_token tk_le dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_le result
         | Character.lt :: tl =>
-            let token := make_token tk_lt dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_lt result
         | Character.gt :: Character.eq :: tl =>
-            let token := make_token tk_ge dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_ge result
         | Character.gt :: tl =>
-            let token := make_token tk_gt dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_gt result
         | Character.slash :: Character.slash :: tl =>
-            let next_dfa := init_dfa commenting dfa.(loc) in
+            let next_dfa := make_dfa commenting dfa.(loc) in
             tokenize_rec tl next_dfa
         | Character.slash :: tl =>
-            let token := make_token tk_slash dfa.(loc) in
             let result := tokenize_rec tl dfa in
-            concat_with_casting token result
+            concat_with_casting tk_slash result
         | Character.double_quoute :: tl =>
             let next_dfa := start_quoting dfa.(loc) in
             tokenize_rec tl next_dfa
@@ -400,7 +384,7 @@ Section TOKENIZER.
         | nil => Ok nil
         | Character.line_feed :: tl
         | Character.carriage_ret :: tl =>
-            let next_dfa := init_dfa normal dfa.(loc) in
+            let next_dfa := make_dfa normal dfa.(loc) in
             tokenize_rec tl next_dfa
         | _ :: tl => tokenize_rec tl dfa
         end
@@ -410,8 +394,8 @@ Section TOKENIZER.
         | (Character.line_feed as ch) :: _
         | (Character.carriage_ret as ch) :: _ => Err (unexpected_char ch) dfa.(loc)
         | Character.double_quoute :: tl =>
-            let token := make_token (tk_string (Character.string_of_list_t acc)) dfa.(loc) in
-            let next_dfa := init_dfa normal dfa.(loc) in
+            let token := tk_string (Character.string_of_list_t acc) in
+            let next_dfa := make_dfa normal dfa.(loc) in
             let result := tokenize_rec tl next_dfa in
             concat_with_casting token result
         | c :: tl =>
@@ -421,15 +405,15 @@ Section TOKENIZER.
     | numbering whole fraction is_float =>
         match src with
         | nil =>
-            let token := make_token (tk_number_of_list_ascii whole fraction) dfa.(loc) in
+            let token := tk_number_of_list_ascii whole fraction in
             Ok (token :: nil)
         | Character.digit d :: tl =>
             let next_dfa := next_numbering whole fraction is_float d dfa.(loc) in
             tokenize_rec tl next_dfa
         | Character.space :: tl
         | Character.tab :: tl =>
-            let token := make_token (tk_number_of_list_ascii whole fraction) dfa.(loc) in
-            let next_dfa := init_dfa normal dfa.(loc) in
+            let token := tk_number_of_list_ascii whole fraction in
+            let next_dfa := make_dfa normal dfa.(loc) in
             let result := tokenize_rec tl next_dfa in
             concat_with_casting token result
         | ch :: tl => Err (unexpected_char ch) dfa.(loc)
@@ -437,7 +421,7 @@ Section TOKENIZER.
     | wording acc =>
         match src with
         | nil =>
-            let token := make_token (token_type_of_word (Character.string_of_list_t acc)) dfa.(loc) in
+            let token := token_of_word (Character.string_of_list_t acc) in
             Ok (token :: nil)
         | (Character.alpha a as ch) :: tl =>
             let next_dfa := next_wording acc ch dfa.(loc) in
@@ -446,8 +430,8 @@ Section TOKENIZER.
             let next_dfa := next_wording acc ch dfa.(loc) in
             tokenize_rec tl next_dfa
         | _ :: tl =>
-            let token := make_token (token_type_of_word (Character.string_of_list_t acc)) dfa.(loc) in
-            let next_dfa := init_dfa normal dfa.(loc) in
+            let token := token_of_word (Character.string_of_list_t acc) in
+            let next_dfa := make_dfa normal dfa.(loc) in
             let result := tokenize_rec tl next_dfa in
             concat_with_casting token result
         end
@@ -455,7 +439,7 @@ Section TOKENIZER.
 
 
   Definition tokenize (src: string): result (list token) :=
-    let dfa := init_dfa normal 1 in
+    let dfa := make_dfa normal 1 in
     tokenize_rec (Character.list_t_of_string src) dfa.
 
 End TOKENIZER.

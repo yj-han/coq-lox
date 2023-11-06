@@ -2,7 +2,7 @@ Require Import Floats.
 Require Import String.
 Require Import ZArith.
 
-Variant token_type :=
+Variant token :=
   (* Single-character tokens *)
   | tk_left_paren
   | tk_right_paren
@@ -25,10 +25,10 @@ Variant token_type :=
   | tk_lt
   | tk_le
   (* Literals *)
-  | tk_identifier (id: string)
-  | tk_string (s: string)
-  | tk_int (z: Z)
-  | tk_float (f: float)
+  | tk_identifier (id : string)
+  | tk_string (s : string)
+  | tk_int (z : Z)
+  | tk_float (f : float)
   (* Keywords *)
   | tk_and
   | tk_class
@@ -50,8 +50,7 @@ Variant token_type :=
   | tk_undef
 .
 
-
-Definition eqb (t1 t2 : token_type) : bool :=
+Definition eqb (t1 t2 : token) : bool :=
   match t1, t2 with
   | tk_left_paren, tk_left_paren
   | tk_right_paren, tk_right_paren
@@ -98,13 +97,4 @@ Definition eqb (t1 t2 : token_type) : bool :=
   | tk_eof, tk_eof
   | tk_undef, tk_undef => true
   | _, _ => false
-  end.   
-
-Record token :=
-  mkToken {
-      type: token_type;
-      line: nat;
-    }.
-
-Definition make_token (type: token_type) (line: nat): token :=
-  {| type := type; line := line; |}.
+  end.
