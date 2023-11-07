@@ -24,14 +24,15 @@ Inductive expr :=
 (* for superclass, only expr.variable is allowed,
    and for methods, only stmt.function is allowed *)
 Inductive stmt :=
-| block_stmt (stmts : list stmt)
+| block (stmts : list stmt)
 | expression (expr : expr)
 | function (name : token) (params : list token) (body : list stmt)
-| class (name : token) (superclass : option expr) (methods : stmt)
-| ite (cond : expr) (bthen : stmt) (belse : stmt)
+| class (name : token) (superclass : option expr) (methods : list stmt)
+| ite (cond : expr) (bthen : list stmt) (belse : list stmt)
 | print (expr : expr)
 | ret (keyword : token) (val : expr)
 | var (name : token) (initializer : expr)
-| while (cond : expr) (body : stmt)
+| while (cond : expr) (body : list stmt)
+| forloop (initializer : option expr) (cond : expr) (incr : option expr) (body : list stmt)
 .
 
