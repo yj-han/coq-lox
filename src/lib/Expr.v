@@ -5,7 +5,6 @@ Require Import List.
 
 Require Import Token.
 
-
 Inductive expr :=                      
 | assign (name : token) (value : expr)         
 | binop (lhs : expr) (op : token) (rhs : expr)
@@ -15,8 +14,8 @@ Inductive expr :=
 | literal (val : token)
 | logical (lhs : expr) (op : token) (right : expr)
 | set (obj : expr) (name : token) (val : expr)
-| super (keyword : token) (method : token)
-| this  (keyword : token)
+| super (method : token)
+| this
 | unop (op : token) (rhs : expr)
 | variable (name : token)
 .
