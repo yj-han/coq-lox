@@ -11,110 +11,147 @@ Require Import List.
 Require Import Token.
 Require Import Expr.
 
-
-Section ERROR_HANDLING.
-  (* Possible errors from scanning *)
-  Variant err_type :=
-    | syntax_err.
-
-  (* Result: Ok or Err *)
-  Inductive result (X: Type): Type :=
-  | Ok (x: X)
-  | Err (e: err_type).
-
-  Definition error_msg (e: err_type): string :=
-    match e with
-    | syntax_err => "Syntax error"
-    end.
-
-End ERROR_HANDLING.
-
-Arguments Ok {X}.
-Arguments Err {X}.
-
-Variant state :=
-  | glob
-  | in_class
-  | in_function_param (name : token) (params : list token)
-  | in_function_body (name : token) (params : list token) (body : list stmt)
-  | in_var (name : token) (initializer : option expr)
-  | in_for (initializer : option expr) (cond : option expr) (incr : option expr) (body : option stmt)  
-  | in_if (cond : option expr) (bthen : option stmt) (belse : option stmt)
-  | in_print
-  | in_ret
-  | in_while (cond : option expr) (body : list stmt)
-  | in_block (stmts : list stmt)
-  | in_assign (name : token) (value : option expr)
-  | in_binop
-  | in_call
-  | in_get
-  | in_grouping
-  | in_literal
-  | in_logical
-  | in_set
-  | in_super
-  | in_this
-  | in_unop
-  | in_variable (name : token)      
+Variant err_type :=
+  | invalid_params
+  | unexpected
+  | left_brace_expected
 .
 
-Definition concat_with_casting {X : Type} (x : X) (xs : result (list X)) :=
-  match xs with
-  | Ok xs => Ok (x :: xs)
-  | _ => xs
+Inductive parse_result :=
+| syntax_err (e : err_type)
+| expr_terminated (expr : expr) (rest : list token)
+| param_terminated (params : list token) (rest : list token)
+| stmt_terminated (stmts : list stmt) (rest : list token)
+| terminated
+.
+
+Definition bind_stmt (val : stmt) (onto : parse_result) :=
+  match onto with
+  | syntax_err e => syntax_err e
+  | expr_terminated _ _ => syntax_err unexpected
+  | param_terminated _ _ => syntax_err unexpected
+  | stmt_terminated stmts rest => stmt_terminated (cons val stmts) rest
+  | terminated => stmt_terminated (cons val nil) nil
   end.
 
-(* Assume that an opening brace exists *)
-Fixpoint closing_brace_rec
-  (nested : nat)
-  (count : nat)
-  (tokens : list token)
-  : result nat :=
-  match nested, tokens with
-  | _, nil => Err syntax_err 
-  | O, tk_right_brace :: _ => Ok count
-  | _, tk_right_brace :: tl => closing_brace_rec (nested-1) (count+1) tl
-  | _, tk_left_brace :: tl => closing_brace_rec (nested+1) (count+1) tl
-  | _, _ :: tl => closing_brace_rec nested (count+1) tl
+Definition bind_param (val : token) (onto : parse_result) :=
+  match onto with
+  | syntax_err e => syntax_err e
+  | expr_terminated _ _ => syntax_err unexpected
+  | param_terminated params rest => param_terminated (cons val params) rest
+  | stmt_terminated _ _ => syntax_err unexpected
+  | terminated => param_terminated (cons val nil) nil
   end.
 
-Definition closing_brace (tokens : list token) :=
-  closing_brace_rec 0 1 tokens.
-
-
-(* n is always equivalent to the length of the tokens.
-   It is a decreasing argument of this fixpoint definition *)
-Fixpoint parse_rec
-  (n : nat)  
+Fixpoint parse_params_rec
   (tokens : list token)
-  {struct n}
-  : result (list stmt) :=
-  match n with
-  | O => Ok nil
-  | _ =>
-    match tokens with
-    | nil => Ok nil
-    | tk_class :: tl =>
-        match tl with
-        | tk_identifier id1 :: tk_lt :: tk_identifier id2 :: tk_left_brace :: tl =>
-            let closing_at := closing_brace tl in
-            match closing_at with
-              | Ok closing_at =>
-                  let fst := firstn closing_at tl in
-                  let body := parse_rec closing_at fst in
-                  let snd := skipn closing_at tl in
-                  parse_rec (n - closing_at) snd
-            | Err e => Err e
-            end              
-        (* | tk_identifier id :: tk_left_brace :: tl *)
-        | _ => Err syntax_err
-        end
-    (* | tk_fun :: tk_identifier id :: tk_left_brace :: tl *)
-    (* | tk_var :: tk_identifier id :: tk_eq :: tl *)
-    | _ => Err syntax_err
-    end
+  : parse_result :=
+  match tokens with
+  | tk_right_brace :: tl => param_terminated nil tl
+  | (tk_identifier _ as param) :: tl => bind_param param (parse_params_rec tl)
+  | _ => syntax_err invalid_params
+  end.
+
+Fixpoint parse_expression_rec
+  (steps : nat)
+  (tokens : list token)
+  : parse_result :=
+  match steps with
+  | O => terminated
+  | S n =>
+      match tokens with
+      | nil => syntax_err unexpected
+      | (tk_false as val) :: tl
+      | (tk_true as val) :: tl
+      | (tk_nil as val) :: tl
+      | (tk_identifier _ as val) :: tl
+      | (tk_string _ as val) :: tl
+      | (tk_int _ as val) :: tl
+      | (tk_float _ as val) :: tl => expr_terminated (literal val) tl
+      | tk_super :: tk_dot :: (tk_identifier _ as method) :: tl =>
+          expr_terminated ( super method) tl
+      | tk_this :: tl => expr_terminated this tl
+      | (tk_identifier _ as name) :: tl => expr_terminated (variable name) tl
+      | tk_left_paren :: tl =>
+          match parse_expression_rec n tl with
+          | syntax_err e => syntax_err e
+          | expr_terminated group (tk_right_paren :: rest) =>
+              expr_terminated (grouping group) rest
+          | _  => syntax_err unexpected
+          end
+      | _ => syntax_err unexpected
+      end
   end.
     
+    
+    
+(* steps variable is a decreasing argument of this fixpoint definition *)
+Fixpoint parse_rec
+  (steps : nat)
+  (tokens : list token)
+  : parse_result :=
+  match steps with
+  | 0 => stmt_terminated nil tokens
+  | S n =>
+      match tokens with
+      | nil => stmt_terminated nil nil
+      (* Class Statement *)
+      | tk_class :: tl =>
+          match tl with
+          | (tk_identifier _ as name)
+              :: tk_lt
+              :: (tk_identifier _ as superclass)
+              :: tk_left_brace :: tl =>
+              match parse_rec n tl with
+              | syntax_err e => syntax_err e
+              | param_terminated _ _ => syntax_err unexpected
+              | stmt_terminated stmts rest =>
+                  let class_stmt := class name (Some (variable superclass)) stmts in
+                  bind_stmt class_stmt (parse_rec n rest)
+              end
+          | (tk_identifier _ as name)
+              :: tk_left_paren :: tl =>
+              match parse_params_rec tl with
+              | syntax_err e => syntax_err e
+              | param_terminated _ _ => syntax_err unexpected
+              | stmt_terminated stmts rest =>
+                  let class_stmt := class name None stmts in
+                  bind_stmt class_stmt (parse_rec n rest)
+              end
+          | _ => syntax_err unexpected
+          end
+      (* Function Statement *)
+      | tk_fun :: (tk_identifier id as name) :: tk_left_brace :: tl =>
+          match parse_params_rec tl with
+          | syntax_err e => syntax_err e
+          | expr_terminated _ _ => syntax_err unexpected
+          | param_terminated params tl =>
+              match tl with
+              | tk_left_brace :: tl =>
+                  match parse_rec n tl with
+                  | syntax_err e => syntax_err e
+                  | expr_terminated _ _ => syntax_err unexpected
+                  | param_terminated _ _ => syntax_err unexpected
+                  | stmt_terminated stmts rest =>
+                      let function_stmt := function name params stmts in
+                      bind_stmt function_stmt (parse_rec n rest)
+                  end
+              | _ => syntax_err left_brace_expected
+              end
+          | stmt_terminated stmts rest => syntax_err unexpected
+          end
+      | tk_var :: (tk_identifier id as name) :: tk_eq :: tl =>
+          match parse_expression_rec n tl with
+          | syntax_err e => syntax_err e
+          | expr_terminated initializer rest =>
+              bind_stmt (var name initializer) (parse_rec n rest)
+          | param_terminated _ _ => syntax_err unexpected
+          | stmt_terminated _ _ => syntax_err unexpected
+          end            
+      | _ => syntax_err unexpected
+      end
+  end.
+
     (* | tk_for :: tl => Err syntax_err  *)
     (* | tk_if :: tl => Err syntax_err *)
     (* | tk_print :: tl => Err syntax_err *)
