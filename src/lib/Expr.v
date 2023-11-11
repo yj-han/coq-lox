@@ -8,7 +8,7 @@ Require Import Token.
 Inductive expr :=                      
 | assign (name : token) (value : expr)         
 | binop (lhs : expr) (op : token) (rhs : expr)
-| call (callee : expr) (paren : token) (args : list expr)
+| function_call (callee : expr) (args : list expr)
 | get (obj : expr) (name : token)
 | grouping (expr : expr)
 | literal (val : token)
@@ -34,4 +34,3 @@ Inductive stmt :=
 | while (cond : expr) (body : list stmt)
 | forloop (initializer : option expr) (cond : expr) (incr : option expr) (body : list stmt)
 .
-
