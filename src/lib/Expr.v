@@ -5,8 +5,8 @@ Require Import List.
 
 Require Import Token.
 
-Inductive expr :=                      
-| assign (name : token) (value : expr)         
+Inductive expr :=
+| assign (name : token) (value : expr)
 | binop (lhs : expr) (op : token) (rhs : expr)
 | function_call (callee : expr) (args : list expr)
 | get (obj : expr) (name : token)
@@ -29,8 +29,7 @@ Inductive stmt :=
 | class (name : token) (superclass : option expr) (methods : list stmt)
 | ite (cond : expr) (bthen : list stmt) (belse : list stmt)
 | print (expr : expr)
-| ret (keyword : token) (val : expr)
+| ret (val : option expr)
 | var (name : token) (initializer : expr)
 | while (cond : expr) (body : list stmt)
-| forloop (initializer : option expr) (cond : expr) (incr : option expr) (body : list stmt)
 .

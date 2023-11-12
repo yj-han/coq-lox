@@ -19,10 +19,13 @@ Variant err_type :=
 
 Inductive parse_result :=
 | syntax_err (msg : string)
+| expr_opt_terminated (expr : option expr) (tl : list token)
 | expr_terminated (expr : expr) (tl : list token)
 | exprs_terminated (args : list expr) (tl : list token)
 | params_terminated (params : list token) (tl : list token)
-| stmt_terminated (stmts : list stmt) (tl : list token)
+| stmt_terminated (stmt : stmt) (tl : list token)
+| stmt_opt_terminated (stmt : option stmt) (tl : list token)
+| stmts_terminated (stmts : list stmt) (tl : list token)
 | terminated
 .
 
@@ -53,8 +56,9 @@ Definition bind_expr (val : expr) (onto : parse_result) :=
 
 Definition bind_stmt (val : stmt) (onto : parse_result) :=
   match onto with
-  | stmt_terminated stmts tl => stmt_terminated (cons val stmts) tl
-  | terminated => stmt_terminated (cons val nil) nil
+  | stmts_terminated stmts tl => stmts_terminated (val :: stmts) tl
+  | stmt_terminated stmt tl => stmts_terminated (val :: stmt :: nil) tl
+  | terminated => stmts_terminated (cons val nil) nil
   | _ => propagate_error onto
   end.
 
@@ -326,7 +330,7 @@ Fixpoint parse_stmt (steps : nat) (tokens : list token) : parse_result :=
               :: (tk_identifier _ as superclass)
               :: tk_left_brace :: tl =>
               match parse_stmt n tl with
-              | stmt_terminated stmts tl =>
+              | stmts_terminated stmts tl =>
                   let class_stmt := class name (Some (variable superclass)) stmts in
                   bind_stmt class_stmt (parse_stmt n tl)
               | other => bind_error other (syntax_err "Expected statements")
@@ -334,7 +338,7 @@ Fixpoint parse_stmt (steps : nat) (tokens : list token) : parse_result :=
           | (tk_identifier _ as name)
               :: tk_left_paren :: tl =>
               match parse_params_rec tl with
-              | stmt_terminated stmts tl =>
+              | stmts_terminated stmts tl =>
                   let class_stmt := class name None stmts in
                   bind_stmt class_stmt (parse_stmt n tl)
               | other => bind_error other (syntax_err "Expected statements")
@@ -348,7 +352,7 @@ Fixpoint parse_stmt (steps : nat) (tokens : list token) : parse_result :=
               match tl with
               | tk_left_brace :: tl =>
                   match parse_stmt n tl with
-                  | stmt_terminated stmts tl =>
+                  | stmts_terminated stmts tl =>
                       let function_stmt := function name params stmts in
                       bind_stmt function_stmt (parse_stmt n tl)
                   | other => bind_error other (syntax_err "Expected statements")
@@ -364,10 +368,169 @@ Fixpoint parse_stmt (steps : nat) (tokens : list token) : parse_result :=
               bind_stmt (var name initializer) (parse_stmt n tl)
           | other => bind_error other (syntax_err "Expected an expression")
           end
-      | _ => syntax_err "Unexpected token"
+      (* For loop *)
+      | tk_for :: tl =>
+          match tl with
+          | tk_left_paren :: tl =>
+              let init_terminated :=
+                match tl with
+                | tk_semi_colon :: tl => stmt_opt_terminated None tl
+                | tk_var :: tl =>
+                    match parse_stmt n tl with
+                    | stmt_terminated init tl => stmt_opt_terminated (Some init) tl
+                    | other => bind_error other (syntax_err "Expected a statement")
+                    end
+                | _ =>
+                    match parse_expr n tl with
+                    | expr_terminated expr (tk_semi_colon :: tl) =>
+                        stmt_opt_terminated (Some (expression expr)) tl
+                    | expr_terminated expr tl => syntax_err "Expected ';' after expression"
+                    | other => bind_error other (syntax_err "Expected an expression")
+                    end
+                end in
+              let cond_terminated :=
+                match init_terminated with
+                | stmt_opt_terminated _ tl =>
+                    match tl with
+                    | tk_semi_colon :: tl => expr_terminated (literal tk_true) tl
+                    | _ =>
+                        match parse_expr n tl with
+                        | expr_terminated expr (tk_semi_colon :: tl) => expr_terminated expr tl
+                        | expr_terminated expr tl => syntax_err "Expected ';' after expression"
+                        | other => bind_error other (syntax_err "Expected an expression")
+                        end
+                    end
+                | other => bind_error other (syntax_err "Expected a statement")
+                end in
+              let incr_terminated :=
+                match cond_terminated with
+                | stmt_opt_terminated _ tl =>
+                    match tl with
+                    | tk_right_paren :: tl => stmt_opt_terminated None tl
+                    | _ =>
+                        match parse_expr n tl with
+                        | expr_terminated expr (tk_right_paren :: tl) =>
+                            expr_opt_terminated (Some (expression expr)) tl
+                        | expr_terminated expr tl => syntax_err "Expected ';' after expression"
+                        | other => bind_error other (syntax_err "Expected an expression")
+                        end
+                    end
+                | other => bind_error other (syntax_err "Expected a statement")
+                end in
+              let incr_desugared :=
+                match incr_terminated with
+                | expr_opt_terminated (Some incr) tl =>
+                    match parse_stmt n tl with
+                    | stmt_terminated body tl =>
+                        stmt_terminated (block (body :: (expression incr))) tl
+                    | other => bind_error other (syntax_err "Expected a statement")
+                    end
+                | expr_opt_terminated _ tl => parse_stmt n tl
+                end in
+              let cond_desugared :=
+                match cond_terminated, incr_desugared with
+                | expr_terminated cond _, stmt_terminated body tl =>
+                    stmt_terminated (while cond body) tl
+                | other1, other2 =>
+                    bind_error (bind_error other1 other2) (syntax_err "Invalid for loop")
+                end in
+              match init_terminated, cond_desugared with
+              | stmt_terminated init _, stmt_terminated while_stmt tl =>
+                  bind_stmt (block (init :: while_stmt)) (parse_stmt n tl)
+              | other1, other2 =>
+                  bind_error (bind_error other1 other2) (syntax_err "Invalid for loop")
+              end
+          | _ => syntax_err "Expected '(' after for"
+          end
+      (* If Statement *)
+      | tk_if :: tl =>
+          match tl with
+          | tk_left_paren :: tl =>
+              match parse_expr n tl with
+              | expr_terminated cond tl =>
+                  match tl with
+                  | tk_right_paren :: tl =>
+                      match parse_stmt n tl with
+                      | stmt_terminated bthen (tk_else :: tl) =>
+                          match parse_stmt n tl with
+                          | stmt_terminated belse tl =>
+                              bind_stmt (ite cond bthen belse) (parse_stmt n tl)
+                          | other => bind_error other (syntax_err "Invalid else branch")
+                          end
+                      | stmt_terminated bthen tl
+                        => bind_stmt (ite cond bthen nil) (parse_stmt n tl)
+                      | other => bind_error other (syntax_err "Invalid then branch")
+                      end
+                  | _ => syntax_err "Expected ')' after if condition"
+                  end
+              | other => bind_error other (syntax_err "Invalid condition")
+              end
+          | _ => syntax_err "Expected '(' after if"
+          end
+      (* Print Statement *)
+      | tk_print :: tl =>
+          match parse_expr n tl with
+          | expr_terminated expr tl =>
+              match tl with
+              | tk_semi_colon :: tl => bind_stmt (print expr) (parse_stmt n tl)
+              | _ => syntax_err "Expected ';' after value"
+              end
+          | other => bind_error other (syntax_err "Expected an expression")
+          end
+      (* Return Statement *)
+      | tk_ret :: tl =>
+          match tl with
+          | tk_semi_colon :: tl =>
+              match parse_expr n tl with
+              | expr_terminated expr tl => bind_stmt (ret (Some expr)) (parse_stmt n tl)
+              | other => bind_error other (syntax_err "Expected an expression")
+              end
+          | tl => bind_stmt (ret None) (parse_stmt n tl)
+          end
+      (* While Statement *)
+      | tk_while :: tl =>
+          match tl with
+          | tk_left_paren :: tl =>
+              match parse_expr n tl with
+              | expr_terminated cond (tk_right_paren :: tl) =>
+                  match parse_stmt n tl with
+                  | stmt_terminated body tl => bind_stmt (while cond body) (parse_stmt n tl)
+                  | stmt_terminated _ _ => syntax_err "Expected ')' after condition"
+                  | other => bind_error other (syntax_err "Expected body statements")
+                  end
+              | other => bind_error other (syntax_err "Expected an expression")
+              end
+          | _ => syntax_err "Expected '(' after while"
+          end
+      | tk_left_brace :: tl =>
+          match parse_block n tl with
+          | stmts_terminated body tl =>
+              bind_stmt (block body) (parse_stmt n tl)
+          | other => bind_error other (syntax_err "Expected block")
+          end
+      | _ =>
+          match parse_expr n tl with
+          | expr_terminated expr (tk_semi_colon :: tl) =>
+              bind_stmt (expression expr) (parse_stmt n tl)
+          | expr_terminated expr tl => syntax_err "Expected ';' after expression"
+          | other => bind_error other (syntax_err "Expected an expression")
+          end
       end
-  end.
+  end
 
+with parse_block (steps : nat) (tokens : list token) : parse_result :=
+       match steps with
+       | O => terminated
+       | S n =>
+           match tokens with
+           | nil => terminated
+           | tk_right_brace :: tl => stmts_terminated nil tl
+           | _ => match parse_stmt n token with
+                 | stmt_terminated stmt tl => bind_stmt stmt (parse_block n tl)
+                 | other => bind_error other (syntax_err "Expected a statement")
+                 end
+           end
+       end.
 
 Definition parse (tokens : list token) : parse_result :=
   let steps := (length tokens) * 2 in
