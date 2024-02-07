@@ -14,8 +14,8 @@ quick: Makefile.coq
 
 Makefile.coq: Makefile $(COQTHEORIES)
 	(echo "-R src/lib $(COQMODULE)"; \
-   \
-   echo $(COQTHEORIES)) > _CoqProject
+	\
+   	echo $(COQTHEORIES)) > _CoqProject
 	coq_makefile -f _CoqProject -o Makefile.coq
 
 %.vo: Makefile.coq
