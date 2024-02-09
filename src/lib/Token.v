@@ -49,6 +49,15 @@ Variant token_type :=
   | WS
 .
 
+Definition tt_eq_dec:
+  forall (x y: token_type), { x = y } + { x <> y }.
+Proof.
+  decide equality.
+Defined.
+
+Definition teq (x y: token_type) :=
+  if (tt_eq_dec x y) then true else false.
+
 Record token : Type := mktoken {
   t_type: token_type;
   t_lexeme: string;

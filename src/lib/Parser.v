@@ -1,71 +1,81 @@
-Require Import String.
 Require Import List.
+Require Import String.
+
+From ExtLib Require Import
+  Data.String
+  Data.Monads.EitherMonad
+  Data.Monads.StateMonad
+  Structures.Monads.
 
 Require Import Object.
 Require Import Token.
 Require Import Expr.
 Require Import Stmt.
 
-From ExtLib Require Import
-  Structures.Monads
-  Data.Monads.EitherMonad
-  Data.Monads.StateMonad.
+Set Implicit Arguments.
 
 Section Parser.
+  Import MonadNotation.
+  Local Open Scope monad_scope.
 
-Import MonadNotation.
-Local Open Scope monad_scope.
+  Definition parser_error: Type := (option token) * string.
+  Definition parser_state: Type := (list token) * nat * (list parser_error).
+  Definition init_state (ts: list token): parser_state := (ts, 0, nil).
 
-Definition parser_error: Type := token * string.
+  Definition parser := eitherT parser_error (state parser_state).
 
-Definition parser_state: Type := (list token) * nat * (list parser_error).
+  (** Parsing utils *)
+  Definition inc_current: parser unit :=
+    s <- get ;;
+    let '(tokens, current, errors) := s in
+    put (tokens, current + 1, errors).
 
-Definition init_state (ts: list token): parser_state := (ts, 0, nil).
+  Definition previous: parser (option token) :=
+    s <- get ;;
+    let '(tokens, current, _) := s in
+    ret (nth_error tokens (current - 1)).
 
-Variable m: Type -> Type.
-Context {monad_m: Monad m}.
-Context {state_m: MonadState parser_state m}.
-Context {monadexc_m: MonadExc parser_error m}.
+  Definition peek: parser (option token) :=
+    s <- get ;;
+    let '(tokens, current, _) := s in
+    ret (nth_error tokens current).
 
-(** Statement parsing *)
+  Definition is_at_end: parser (option bool) :=
+    t <- peek ;;
+    match t with
+    | Some t => ret (Some (teq (t_type t) EOF))
+    | None => ret None
+    end.
 
-(** Expression parsing *)
+  Definition advance: parser (option token) :=
+    e <- is_at_end ;;
+    match e with
+    | Some e => if e then previous else (inc_current ;; previous)
+    | None => ret None
+    end.
 
-(** Error recovery *)
+  Definition check (tt: token_type): parser bool :=
+    e <- is_at_end ;;
+    match e with
+    | Some e => if e then (ret false)
+               else (t <- peek ;;
+                      match t with
+                      | Some t => ret (teq (t_type t) tt)
+                      | None => ret false
+                      end)
+    | None => ret false
+    end.
 
-(** Parsing utils *)
-Definition p_error (tk: token) (message: string): m stmt := raise (tk, message).
+  Definition consume (tt: token_type) (message: string) :=
+    if (check tt) then advance else (peek ;; (fun t => raise (t, message))).
 
-Definition inc_current :=
-  s <- get ;;
-  let '(tokens, current, errors) := s in
-  put (tokens, current + 1, errors).
+  Definition match_token_type (ts: list token_type) :=
+    if (exist check ts) (advance ;; ret true) else (ret false).
 
-Definition previous :=
-  s <- get ;;
-  let '(tokens, current, _) := s in
-  ret (nth_error tokens (current - 1)).
+  (** Statement parsing *)
 
-Definition peek :=
-  s <- get ;;
-  let '(tokens, current, _) := s in
-  ret (nth_error tokens current).
+  (** Expression parsing *)
 
-Definition is_at_end :=
-  t <- peek ;;
-  match t_type t with
-  | EOF => ret True
-  | _ => ret False
-  end.
-
-Definition advance :=
-  if is_at_end then (previous) (inc_current >> previous).
-
-Definition consume (tt: token_type) (message: string) :=
-  ifM (check tt) (advance) (peek >>= t -> p_error t message).
-
-Definition match_token_type (ts: list token_type) :=
-  ifM (anyM check ts) (advance >> return True) (return False).
-
+  (** Error recovery *)
 
 End Parser.
