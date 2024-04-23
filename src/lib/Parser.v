@@ -67,10 +67,19 @@ Section Parser.
     end.
 
   Definition consume (tt: token_type) (message: string) :=
-    if (check tt) then advance else (peek ;; (fun t => raise (t, message))).
+    c <- check tt ;;
+    if c then advance else (t <- peek ;; raise (t, message)).
 
-  Definition match_token_type (ts: list token_type) :=
-    if (exist check ts) (advance ;; ret true) else (ret false).
+  Fixpoint match_token_type_inner (tts: list token_type): parser bool :=
+    match tts with
+    | nil => ret false
+    | tty :: tts' => 
+      c <- check tty ;;
+      if c then advance ;; ret true else match_token_type_inner tts'
+    end.
+
+  Definition match_token_type (tts: list token_type): parser bool :=
+    match_token_type_inner tts.
 
   (** Statement parsing *)
 
