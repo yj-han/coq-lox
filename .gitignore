@@ -97,3 +97,6 @@ flycheck_*.el
 Makefile.coq
 Makefile.coq.conf
 _CoqProject
+
+# mac
+.DS_Store
